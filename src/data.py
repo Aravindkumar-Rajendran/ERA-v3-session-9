@@ -38,7 +38,7 @@ def get_transforms():
     
     return train_transformation, val_transformation
 
-def get_dataloaders(params, training_folder_name, val_folder_name):
+def get_dataloaders(params, training_folder_name, val_folder_name, n_gpu):
     train_transformation, val_transformation = get_transforms()
     
     train_dataset = torchvision.datasets.ImageFolder(
@@ -49,10 +49,10 @@ def get_dataloaders(params, training_folder_name, val_folder_name):
     train_sampler = torch.utils.data.RandomSampler(train_dataset)
     train_loader = torch.utils.data.DataLoader(
         train_dataset,
-        batch_size=params.batch_size,
-        sampler=train_sampler,
-        num_workers=params.workers,
-        pin_memory=True,
+        batch_size=params.batch_size * n_gpu,  # Scale batch size by number of GPUs
+        shuffle=True,
+        num_workers=params.num_workers,
+        pin_memory=True
     )
 
     val_dataset = torchvision.datasets.ImageFolder(
@@ -68,4 +68,4 @@ def get_dataloaders(params, training_folder_name, val_folder_name):
         pin_memory=True
     )
     
-    return train_loader, val_loader 
+    return train_loader, val_loader
