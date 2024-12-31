@@ -22,7 +22,7 @@ def get_transforms():
         AlbumentationsWrapper(A.CoarseDropout(max_holes=1, max_height=24, max_width=24, 
                                             min_holes=1, min_height=8, min_width=8, 
                                             fill_value=1, mask_fill_value=None, 
-                                            always_apply=False, p=0.25)),
+                                            always_apply=False, p=0.1)),
         transforms.ToTensor(),
         transforms.Normalize(mean=[0.485, 0.456, 0.406], 
                            std=[0.229, 0.224, 0.225])
@@ -63,7 +63,7 @@ def get_dataloaders(params, training_folder_name, val_folder_name, n_gpu):
     val_loader = torch.utils.data.DataLoader(
         val_dataset,
         batch_size=64,
-        num_workers=params.workers,
+        num_workers=params.num_workers,
         shuffle=False,
         pin_memory=True
     )

@@ -24,7 +24,7 @@ training_folder_name = '/mnt/dataEBS/imagenet/ILSVRC/Data/CLS-LOC/train'
 val_folder_name = '/mnt/dataEBS/imagenet/ILSVRC/Data/CLS-LOC/val'
 
 # Get data loaders
-train_loader, val_loader = get_dataloaders(params, training_folder_name, val_folder_name)
+train_loader, val_loader = get_dataloaders(params, training_folder_name, val_folder_name, n_gpu=1)
 
 # Initialize model, loss, optimizer
 model = get_resnet50_model().to(device)
@@ -149,12 +149,15 @@ def main():
     Path(os.path.join("checkpoints", params.name)).mkdir(parents=True, exist_ok=True)
     writer = SummaryWriter('runs/' + params.name)
     
-    # Initial validation
-    test(val_loader, model, loss_fn, epoch=0, writer=writer, 
-         train_dataloader=train_loader, calc_acc5=True)
+
+    # # Initial validation
+    # test(val_loader, model, loss_fn, epoch=0, writer=writer, 
+    #      train_dataloader=train_loader, calc_acc5=True)
     
+    print("starting the training...")
     # Training loop
     for epoch in range(params.num_epochs):
+        
         train(train_loader, model, loss_fn, optimizer, epoch=epoch, writer=writer)
         
         # Save checkpoint

@@ -2,15 +2,15 @@ import torch
 
 class Params:
     def __init__(self):
-        self.batch_size = 128
+        self.batch_size = 148
         self.name = "resnet_50"
-        self.workers = 16
-        self.lr = 0.001
+        self.num_workers = 48
+        self.lr = 0.165
         self.momentum = 0.9
         self.weight_decay = 1e-4
         self.lr_step_size = 30
         self.lr_gamma = 0.1
-        self.num_epochs = 100
+        self.num_epochs = 50
 
     def __repr__(self):
         return str(self.__dict__)

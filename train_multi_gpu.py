@@ -23,14 +23,17 @@ print(f"Using {device} device")
 training_folder_name = '/mnt/dataEBS/imagenet/ILSVRC/Data/CLS-LOC/train'
 val_folder_name = '/mnt/dataEBS/imagenet/ILSVRC/Data/CLS-LOC/val'
 
+# Get number of available GPUs
+n_gpu = torch.cuda.device_count()
+
+print("Loading the data...")
 # Get data loaders
-train_loader, val_loader = get_dataloaders(params, training_folder_name, val_folder_name)
+train_loader, val_loader = get_dataloaders(params, training_folder_name, val_folder_name, n_gpu)
+
+print("Number of GPUs: ", n_gpu)
 
 # Initialize model, loss, optimizer
 model = get_resnet50_model()
-
-# Get number of available GPUs
-n_gpu = torch.cuda.device_count()
 
 # Wrap model in DataParallel
 if n_gpu > 1:
@@ -42,6 +45,17 @@ optimizer = torch.optim.SGD(model.parameters(),
                           lr=params.lr, 
                           momentum=params.momentum, 
                           weight_decay=params.weight_decay)
+
+lr_scheduler = torch.optim.lr_scheduler.OneCycleLR(
+                optimizer,
+                max_lr=params.lr * 8,  # More moderate multiplier
+                total_steps=(len(train_loader.dataset) // params.batch_size) * params.num_epochs,
+                pct_start=0.2,  # Longer warmup for stability
+                anneal_strategy='cos',
+                div_factor=15,
+                final_div_factor=500,
+                three_phase=True
+            )
 
 # Initialize logger
 logger = TrainingLogger(params.name)
@@ -55,14 +69,13 @@ def train(dataloader, model, loss_fn, optimizer, epoch, writer):
     
     epoch_start_time = time.time()
     
-    # Create progress bar
+    # Create progress bar for the entire epoch
     pbar = tqdm(dataloader, 
                 desc=f'Epoch {epoch}', 
-                unit='batch',
-                leave=True,
-                total=len(dataloader))
+                total=len(dataloader),
+                leave=True)
     
-    for batch_idx, (X, y) in enumerate(pbar):
+    for X, y in pbar:
         X, y = X.to(device), y.to(device)
         batch_size = len(X)
         
@@ -74,6 +87,7 @@ def train(dataloader, model, loss_fn, optimizer, epoch, writer):
         loss.backward()
         optimizer.step()
         optimizer.zero_grad()
+        lr_scheduler.step()
         
         # Calculate statistics
         running_loss += loss.item()
@@ -81,25 +95,24 @@ def train(dataloader, model, loss_fn, optimizer, epoch, writer):
         total += y.size(0)
         correct += predicted.eq(y).sum().item()
         
-        current_loss = running_loss/(batch_idx+1)
+        current_loss = running_loss/(total/batch_size)
         current_acc = 100.*correct/total
         
         # Update progress bar with current metrics
         pbar.set_postfix({
-            'loss': f'{current_loss:.4f}',
-            'acc': f'{current_acc:.2f}%',
-            'processed': f'{(batch_idx + 1) * batch_size}/{size}'
+            'Loss': f'{current_loss:.4f}',
+            'Acc': f'{current_acc:.2f}%'
         })
         
-        # Log to tensorboard and file logger every 100 batches
-        if batch_idx % 100 == 0:
-            step = epoch * size + batch_idx * batch_size
+        # Log to tensorboard every 100 batches
+        if (total/batch_size) % 100 == 0:
+            step = epoch * size + total
             writer.add_scalar('training/loss', current_loss, step)
             writer.add_scalar('training/accuracy', current_acc, step)
             
             # Log to file
             current_lr = optimizer.param_groups[0]['lr']
-            logger.log_training_step(epoch, batch_idx, current_loss, 
+            logger.log_training_step(epoch, total//batch_size, current_loss, 
                                   current_acc, current_lr, len(dataloader))
     
     epoch_time = time.time() - epoch_start_time
@@ -158,11 +171,12 @@ def main():
     Path(os.path.join("checkpoints", params.name)).mkdir(parents=True, exist_ok=True)
     writer = SummaryWriter('runs/' + params.name)
     
-    # Initial validation
-    test(val_loader, model, loss_fn, epoch=0, writer=writer, 
-         train_dataloader=train_loader, calc_acc5=True)
+    # # Initial validation
+    # test(val_loader, model, loss_fn, epoch=0, writer=writer, 
+    #      train_dataloader=train_loader, calc_acc5=True)
     
     # Training loop
+    print("starting the training...")
     for epoch in range(params.num_epochs):
         train(train_loader, model, loss_fn, optimizer, epoch=epoch, writer=writer)
         
@@ -170,6 +184,7 @@ def main():
         checkpoint = {
             "model": model.module.state_dict() if torch.cuda.device_count() > 1 else model.state_dict(),
             "optimizer": optimizer.state_dict(),
+            "lr_scheduler": lr_scheduler.state_dict(),
             "epoch": epoch,
             "params": params
         }
